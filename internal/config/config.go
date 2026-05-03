@@ -8,6 +8,14 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+func expandTilde(p string) string {
+	if len(p) >= 2 && p[:2] == "~/" {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, p[2:])
+	}
+	return p
+}
+
 type ServerConfig struct {
 	Listen string `toml:"listen"`
 	Store  string `toml:"store"`
@@ -77,14 +85,27 @@ func defaults() *Config {
 func Load(path string) (*Config, error) {
 	cfg := defaults()
 	if path == "" {
+		cfg.Server.Store = expandTilde(cfg.Server.Store)
 		return cfg, nil
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		cfg.Server.Store = expandTilde(cfg.Server.Store)
 		return cfg, nil
 	}
 	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		return nil, err
 	}
+	defaultTTLRules := defaults().Cache.TTL
+	seen := make(map[string]bool, len(cfg.Cache.TTL))
+	for _, r := range cfg.Cache.TTL {
+		seen[r.Tool] = true
+	}
+	for _, r := range defaultTTLRules {
+		if !seen[r.Tool] {
+			cfg.Cache.TTL = append(cfg.Cache.TTL, r)
+		}
+	}
+	cfg.Server.Store = expandTilde(cfg.Server.Store)
 	return cfg, nil
 }
 
@@ -94,6 +115,9 @@ func DefaultPath() string {
 }
 
 func ResolveTTL(tool string, explicitTTL int, cfg *Config) time.Duration {
+	if cfg == nil {
+		return 21600 * time.Second
+	}
 	if explicitTTL > 0 {
 		return time.Duration(explicitTTL) * time.Second
 	}

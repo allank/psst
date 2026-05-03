@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,4 +84,33 @@ func TestDefaultPath(t *testing.T) {
 	p := config.DefaultPath()
 	assert.True(t, filepath.IsAbs(p))
 	assert.Contains(t, p, "psst")
+}
+
+func TestResolveTTLNilConfig(t *testing.T) {
+	d := config.ResolveTTL("any_tool", 0, nil)
+	assert.Equal(t, 21600*time.Second, d)
+}
+
+func TestLoadStorePathTildeExpanded(t *testing.T) {
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.False(t, strings.HasPrefix(cfg.Server.Store, "~"), "Store path should not contain tilde")
+	assert.True(t, filepath.IsAbs(cfg.Server.Store))
+}
+
+func TestLoadUserTTLRulesDoNotReplaceDefaults(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "*.toml")
+	require.NoError(t, err)
+	_, err = f.WriteString("[[cache.ttl]]\ntool = \"my_custom_tool\"\nseconds = 999\n")
+	require.NoError(t, err)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	require.NoError(t, err)
+	// User rule should be present
+	d := config.ResolveTTL("my_custom_tool", 0, cfg)
+	assert.Equal(t, 999*time.Second, d)
+	// Default rules should still be present as fallback
+	d = config.ResolveTTL("jira_get_issue", 0, cfg)
+	assert.Equal(t, 86400*time.Second, d)
 }
