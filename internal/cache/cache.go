@@ -57,7 +57,7 @@ func New(s *store.Store, cfg *config.Config, emb Embedder, storePath string) *Ca
 func (c *Cache) EnsureIndex() {
 	c.indexOnce.Do(func() {
 		if err := c.loadSidecar(); err != nil {
-			_ = c.RebuildIndex()
+			_ = c.rebuildIndex()
 			_ = c.saveSidecar()
 		}
 	})
@@ -66,6 +66,13 @@ func (c *Cache) EnsureIndex() {
 // RebuildIndex clears and rebuilds the in-memory vector index from bbolt.
 // Called by the daemon on SIGHUP.
 func (c *Cache) RebuildIndex() error {
+	c.indexOnce = sync.Once{}
+	return c.rebuildIndex()
+}
+
+// rebuildIndex does the actual rebuild work without resetting indexOnce.
+// Safe to call from inside EnsureIndex's Do callback.
+func (c *Cache) rebuildIndex() error {
 	c.mu.Lock()
 	c.tools = make(map[string]*toolIndex)
 	c.mu.Unlock()
@@ -120,24 +127,22 @@ func (c *Cache) Lookup(ctx context.Context, tool string, args json.RawMessage, t
 
 	c.mu.RLock()
 	ti := c.tools[tool]
+	var results []vector.Result
+	if ti != nil && ti.flat.Len() > 0 {
+		results, err = ti.flat.Search(vec, 1)
+	}
+	var hitKey string
+	if len(results) > 0 {
+		hitKey = ti.idToKey[results[0].ID]
+	}
 	c.mu.RUnlock()
 
-	if ti == nil || ti.flat.Len() == 0 {
-		return &Result{Hit: false}, nil
-	}
-
-	results, err := ti.flat.Search(vec, 1)
-	if err != nil || len(results) == 0 {
+	if len(results) == 0 || err != nil {
 		return &Result{Hit: false}, nil
 	}
 	if float64(results[0].Score) < threshold {
 		return &Result{Hit: false}, nil
 	}
-
-	c.mu.RLock()
-	hitKey := ti.idToKey[results[0].ID]
-	c.mu.RUnlock()
-
 	if hitKey == "" {
 		return &Result{Hit: false}, nil
 	}
@@ -213,18 +218,20 @@ func (c *Cache) Invalidate(tool, key string) (int, error) {
 }
 
 func (c *Cache) Evict() (int, error) {
-	var toDelete []string
+	type evictEntry struct{ tool, key string }
+	var toDelete []evictEntry
 	if err := c.s.Scan(func(e *store.Entry) error {
 		if time.Now().After(e.ExpiresAt) {
-			toDelete = append(toDelete, e.Key)
+			toDelete = append(toDelete, evictEntry{e.Tool, e.Key})
 		}
 		return nil
 	}); err != nil {
 		return 0, err
 	}
-	for _, k := range toDelete {
-		_ = c.s.Delete(k)
-		_ = c.s.DeleteVector(k)
+	for _, entry := range toDelete {
+		_ = c.s.Delete(entry.key)
+		_ = c.s.DeleteVector(entry.key)
+		c.removeKeyFromIndex(entry.tool, entry.key)
 	}
 	return len(toDelete), nil
 }
@@ -256,6 +263,7 @@ func (c *Cache) removeKeyFromIndex(tool, key string) {
 	for id, k := range ti.idToKey {
 		if k == key {
 			delete(ti.idToKey, id)
+			ti.flat.Remove(id)
 			return
 		}
 	}

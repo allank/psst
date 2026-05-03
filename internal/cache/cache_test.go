@@ -79,19 +79,23 @@ func TestExpiredExactEntryIsMiss(t *testing.T) {
 
 func TestSemanticHit(t *testing.T) {
 	_, c := openTestCache(t, &fakeEmbedder{})
+	// Store with page=1 — exact key includes "page"
 	_, err := c.Store(context.Background(), "confluence_search",
-		json.RawMessage(`{"q":"mobile auth flow"}`),
+		json.RawMessage(`{"q":"mobile auth flow","page":1}`),
 		json.RawMessage(`{"results":[]}`), 0)
 	require.NoError(t, err)
 
+	// Lookup with page=2 — different exact key, same "q" → same fake vector → semantic hit
 	r, err := c.Lookup(context.Background(), "confluence_search",
-		json.RawMessage(`{"q":"mobile auth flow"}`), 0.82)
+		json.RawMessage(`{"q":"mobile auth flow","page":2}`), 0.82)
 	require.NoError(t, err)
 	assert.True(t, r.Hit)
+	assert.Equal(t, "semantic", r.Match)
 }
 
 func TestSemanticBelowThresholdIsMiss(t *testing.T) {
 	_, c := openTestCache(t, &fakeEmbedder{})
+	// "aaa" and "zzz" hash to different bucket indices in fakeEmbedder → orthogonal vectors → cosine sim ≈ 0
 	_, err := c.Store(context.Background(), "confluence_search",
 		json.RawMessage(`{"q":"aaa"}`),
 		json.RawMessage(`{}`), 0)
