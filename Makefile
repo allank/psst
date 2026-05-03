@@ -1,3 +1,5 @@
+.PHONY: build build-release fetch-model test clean build-darwin-arm64 build-darwin-amd64 build-linux-amd64 build-linux-arm64
+
 BINARY  := psst
 GO      := go
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -21,16 +23,19 @@ build-release: fetch-model
 	$(GO) build $(GOFLAGS) -tags embedmodel -o $(BINARY) .
 
 build-darwin-arm64:
-	GOOS=darwin GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINARY)-darwin-arm64 .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINARY)-darwin-arm64 .
 
 build-darwin-amd64:
-	GOOS=darwin GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY)-darwin-amd64 .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY)-darwin-amd64 .
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY)-linux-amd64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY)-linux-amd64 .
 
 build-linux-arm64:
-	GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINARY)-linux-arm64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINARY)-linux-arm64 .
 
 test:
-	$(GO) test ./...
+	$(GO) test -race ./...
+
+clean:
+	rm -f $(BINARY) $(BINARY)-*

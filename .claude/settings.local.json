@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/allank/Dev/psst log --oneline -10)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl *)",
+      "Bash(go mod *)",
+      "Bash(go build *)",
+      "Bash(git commit *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(make --dry-run build)",
+      "Bash(go version *)",
+      "Bash(go get *)"
+    ]
+  }
+}
