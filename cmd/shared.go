@@ -19,12 +19,11 @@ func resolveStorePath(flagVal string, cfg *config.Config) string {
 	if v := os.Getenv("PSST_STORE"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
-	defaultPath := filepath.Join(home, ".config", "psst", "psst.db")
-	if cfg != nil && cfg.Server.Store != "" && cfg.Server.Store != defaultPath {
+	if cfg != nil && cfg.Server.Store != "" {
 		return cfg.Server.Store
 	}
-	return defaultPath
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "psst", "psst.db")
 }
 
 func loadConfig() *config.Config {
