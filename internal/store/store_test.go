@@ -58,9 +58,8 @@ func TestDelete(t *testing.T) {
 
 func TestDeleteTool(t *testing.T) {
 	s := openTestStore(t)
-	for i, key := range []string{"sha256:a", "sha256:b"} {
+	for _, key := range []string{"sha256:a", "sha256:b"} {
 		e := &store.Entry{Key: key, Tool: "tool_a", Args: json.RawMessage(`{}`), Result: json.RawMessage(`{}`), CachedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
-		_ = i
 		require.NoError(t, s.Put(e))
 	}
 	other := &store.Entry{Key: "sha256:c", Tool: "tool_b", Args: json.RawMessage(`{}`), Result: json.RawMessage(`{}`), CachedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}

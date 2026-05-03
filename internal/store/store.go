@@ -88,9 +88,12 @@ func (s *Store) DeleteVector(key string) error {
 }
 
 func (s *Store) DeleteTool(tool string) (int, error) {
-	var keys [][]byte
-	if err := s.db.View(func(tx *bolt.Tx) error {
-		return tx.Bucket([]byte(bucketEntries)).ForEach(func(k, v []byte) error {
+	var count int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		eb := tx.Bucket([]byte(bucketEntries))
+		vb := tx.Bucket([]byte(bucketVectors))
+		var keys [][]byte
+		if err := eb.ForEach(func(k, v []byte) error {
 			var e Entry
 			if err := json.Unmarshal(v, &e); err != nil {
 				return nil
@@ -99,13 +102,10 @@ func (s *Store) DeleteTool(tool string) (int, error) {
 				keys = append(keys, append([]byte{}, k...))
 			}
 			return nil
-		})
-	}); err != nil {
-		return 0, err
-	}
-	return len(keys), s.db.Update(func(tx *bolt.Tx) error {
-		eb := tx.Bucket([]byte(bucketEntries))
-		vb := tx.Bucket([]byte(bucketVectors))
+		}); err != nil {
+			return err
+		}
+		count = len(keys)
 		for _, k := range keys {
 			if err := eb.Delete(k); err != nil {
 				return err
@@ -114,6 +114,7 @@ func (s *Store) DeleteTool(tool string) (int, error) {
 		}
 		return nil
 	})
+	return count, err
 }
 
 func (s *Store) DeleteAll() (int, error) {
@@ -137,7 +138,7 @@ func (s *Store) Scan(fn func(*Entry) error) error {
 		return tx.Bucket([]byte(bucketEntries)).ForEach(func(_, v []byte) error {
 			var e Entry
 			if err := json.Unmarshal(v, &e); err != nil {
-				return nil
+				return err
 			}
 			return fn(&e)
 		})
