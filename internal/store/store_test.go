@@ -126,3 +126,40 @@ func TestPath(t *testing.T) {
 	defer s.Close()
 	assert.Contains(t, s.Path(), "test.db")
 }
+
+func TestScanVectors(t *testing.T) {
+	s := openTestStore(t)
+
+	vec1 := make([]float32, 384)
+	vec2 := make([]float32, 384)
+	for i := range vec1 {
+		vec1[i] = float32(i) / 384
+		vec2[i] = float32(384-i) / 384
+	}
+	otherVec := make([]float32, 384)
+
+	entries := []*store.Entry{
+		{Key: "sha256:sv1", Tool: "tool_x", Args: json.RawMessage(`{}`), Result: json.RawMessage(`{}`), CachedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+		{Key: "sha256:sv2", Tool: "tool_x", Args: json.RawMessage(`{}`), Result: json.RawMessage(`{}`), CachedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+		{Key: "sha256:sv3", Tool: "tool_y", Args: json.RawMessage(`{}`), Result: json.RawMessage(`{}`), CachedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
+	}
+	require.NoError(t, s.Put(entries[0]))
+	require.NoError(t, s.PutVector("sha256:sv1", vec1))
+	require.NoError(t, s.Put(entries[1]))
+	require.NoError(t, s.PutVector("sha256:sv2", vec2))
+	require.NoError(t, s.Put(entries[2]))
+	require.NoError(t, s.PutVector("sha256:sv3", otherVec))
+
+	seen := map[string][]float32{}
+	require.NoError(t, s.ScanVectors("tool_x", func(key string, vec []float32) error {
+		seen[key] = vec
+		return nil
+	}))
+
+	assert.Len(t, seen, 2)
+	assert.Contains(t, seen, "sha256:sv1")
+	assert.Contains(t, seen, "sha256:sv2")
+	assert.NotContains(t, seen, "sha256:sv3")
+	assert.InDelta(t, vec1[0], seen["sha256:sv1"][0], 1e-6)
+	assert.InDelta(t, vec2[0], seen["sha256:sv2"][0], 1e-6)
+}
