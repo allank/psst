@@ -20,8 +20,10 @@ func TestCanonicalKeyStable(t *testing.T) {
 }
 
 func TestCanonicalKeyDifferentTools(t *testing.T) {
-	k1, _ := cache.CanonicalKey("tool_a", json.RawMessage(`{"k":"v"}`))
-	k2, _ := cache.CanonicalKey("tool_b", json.RawMessage(`{"k":"v"}`))
+	k1, err := cache.CanonicalKey("tool_a", json.RawMessage(`{"k":"v"}`))
+	require.NoError(t, err)
+	k2, err := cache.CanonicalKey("tool_b", json.RawMessage(`{"k":"v"}`))
+	require.NoError(t, err)
 	assert.NotEqual(t, k1, k2)
 }
 
@@ -67,4 +69,15 @@ func TestDetectQueryStringDisabled(t *testing.T) {
 	args := json.RawMessage(`{"q":"something"}`)
 	_, ok := cache.DetectQueryString("tool", args, cfg)
 	assert.False(t, ok)
+}
+
+func TestDetectQueryStringNilConfig(t *testing.T) {
+	_, ok := cache.DetectQueryString("tool", json.RawMessage(`{"q":"something"}`), nil)
+	assert.False(t, ok)
+}
+
+func TestCanonicalKeyNonObjectArgs(t *testing.T) {
+	// Non-object JSON returns an error
+	_, err := cache.CanonicalKey("tool", json.RawMessage(`["a","b"]`))
+	assert.Error(t, err)
 }
