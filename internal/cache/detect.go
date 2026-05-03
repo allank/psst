@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/allank/psst/internal/config"
 )
@@ -11,9 +12,6 @@ var wellKnownQueryKeys = map[string]bool{
 	"search": true, "summary": true, "keywords": true,
 }
 
-// DetectQueryString identifies and extracts query string values from tool arguments.
-// It checks for well-known query keys and tool-specific configured keys.
-// Returns the query string value and a boolean indicating if a query was found.
 func DetectQueryString(tool string, args json.RawMessage, cfg *config.Config) (string, bool) {
 	if cfg == nil || !cfg.Semantic.Enabled {
 		return "", false
@@ -32,7 +30,7 @@ func DetectQueryString(tool string, args json.RawMessage, cfg *config.Config) (s
 	}
 
 	for k, v := range m {
-		if wellKnownQueryKeys[k] || containsString(toolArgKeys, k) {
+		if wellKnownQueryKeys[k] || slices.Contains(toolArgKeys, k) {
 			var s string
 			if err := json.Unmarshal(v, &s); err == nil && s != "" {
 				return s, true
@@ -42,11 +40,3 @@ func DetectQueryString(tool string, args json.RawMessage, cfg *config.Config) (s
 	return "", false
 }
 
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
