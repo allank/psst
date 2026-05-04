@@ -54,9 +54,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	c := openCache(s, cfg, emb, storePath)
 	c.EnsureIndex()
 
-	sweepInterval := time.Duration(cfg.Eviction.SweepIntervalMinutes) * time.Minute
-	if sweepInterval == 0 {
-		sweepInterval = 10 * time.Minute
+	sweepInterval := 10 * time.Minute
+	if cfg != nil && cfg.Eviction.SweepIntervalMinutes > 0 {
+		sweepInterval = time.Duration(cfg.Eviction.SweepIntervalMinutes) * time.Minute
 	}
 	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
