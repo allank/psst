@@ -51,7 +51,12 @@ func (s *Server) Start() error {
 		return fmt.Errorf("listen %s: %w", s.addr, err)
 	}
 	s.listener = ln
-	go s.httpSrv.Serve(ln)
+	go func() {
+		if err := s.httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			// listener error after start — nothing to do but the goroutine must exit cleanly
+			_ = err
+		}
+	}()
 	return nil
 }
 
@@ -250,6 +255,9 @@ func (s *Server) callStore(ctx context.Context, rawArgs json.RawMessage) (any, *
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return nil, &jsonRPCError{Code: -32602, Message: "invalid arguments"}
 	}
+	if args.Tool == "" {
+		return nil, &jsonRPCError{Code: -32602, Message: "tool is required"}
+	}
 	e, err := s.c.Store(ctx, args.Tool, args.Args, args.Result, args.TTL)
 	if err != nil {
 		return nil, &jsonRPCError{Code: -32603, Message: err.Error()}
@@ -268,6 +276,9 @@ func (s *Server) callInvalidate(rawArgs json.RawMessage) (any, *jsonRPCError) {
 	}
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return nil, &jsonRPCError{Code: -32602, Message: "invalid arguments"}
+	}
+	if args.Tool == "" {
+		return nil, &jsonRPCError{Code: -32602, Message: "tool is required"}
 	}
 	n, err := s.c.Invalidate(args.Tool, args.Key)
 	if err != nil {

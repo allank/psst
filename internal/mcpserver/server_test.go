@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -17,12 +18,18 @@ import (
 )
 
 type fakeCacher struct {
-	lookupResult *cache.Result
-	storeResult  *store.Entry
-	invalidated  int
+	lookupResult  *cache.Result
+	lookupErr     error
+	storeResult   *store.Entry
+	storeErr      error
+	invalidateErr error
+	invalidated   int
 }
 
 func (f *fakeCacher) Lookup(_ context.Context, _ string, _ json.RawMessage, _ float64) (*cache.Result, error) {
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
 	if f.lookupResult == nil {
 		return &cache.Result{Hit: false}, nil
 	}
@@ -30,6 +37,9 @@ func (f *fakeCacher) Lookup(_ context.Context, _ string, _ json.RawMessage, _ fl
 }
 
 func (f *fakeCacher) Store(_ context.Context, tool string, args json.RawMessage, result json.RawMessage, ttl int) (*store.Entry, error) {
+	if f.storeErr != nil {
+		return nil, f.storeErr
+	}
 	if f.storeResult == nil {
 		now := time.Now()
 		f.storeResult = &store.Entry{
@@ -41,6 +51,9 @@ func (f *fakeCacher) Store(_ context.Context, tool string, args json.RawMessage,
 }
 
 func (f *fakeCacher) Invalidate(tool, key string) (int, error) {
+	if f.invalidateErr != nil {
+		return 0, f.invalidateErr
+	}
 	f.invalidated++
 	return f.invalidated, nil
 }
@@ -174,4 +187,27 @@ func TestHealthWrongMethod(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, 405, resp.StatusCode)
+}
+
+func TestMCPLookupInternalError(t *testing.T) {
+	fc := &fakeCacher{lookupErr: fmt.Errorf("db unavailable")}
+	srv := newTestServer(t, fc)
+	result := postMCP(t, srv.Addr(), `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"psst_lookup","arguments":{"tool":"t","args":{}}}}`)
+	assert.NotNil(t, result["error"])
+	assert.Equal(t, float64(-32603), result["error"].(map[string]any)["code"])
+}
+
+func TestMCPStoreInternalError(t *testing.T) {
+	fc := &fakeCacher{storeErr: fmt.Errorf("db full")}
+	srv := newTestServer(t, fc)
+	result := postMCP(t, srv.Addr(), `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"psst_store","arguments":{"tool":"t","args":{},"result":{}}}}`)
+	assert.NotNil(t, result["error"])
+	assert.Equal(t, float64(-32603), result["error"].(map[string]any)["code"])
+}
+
+func TestMCPStoreRequiredToolField(t *testing.T) {
+	srv := newTestServer(t, &fakeCacher{})
+	result := postMCP(t, srv.Addr(), `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"psst_store","arguments":{"args":{},"result":{}}}}`)
+	assert.NotNil(t, result["error"])
+	assert.Equal(t, float64(-32602), result["error"].(map[string]any)["code"])
 }
