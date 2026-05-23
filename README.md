@@ -28,7 +28,15 @@ The combination of exact and semantic matching means psst is useful immediately 
 
 ### The Output Design
 
-The default output mode is terse and machine-readable — a single line per result, key=value pairs, no colour. An agent can inspect the output directly or a wrapper can parse it. Human-readable output is opt-in via `--pretty`. The tool is designed for the machine first and the human second.
+The default output mode is terse and machine-readable — a single line per result, key-value pairs, no color. An agent can inspect the output directly or a wrapper can parse it. Human-readable output is opt-in via `--pretty`. The tool is designed for the machine first and the human second.
+
+### Agent-Optimised CLI (via Murli)
+
+Psst is natively integrated with [`github.com/allank/murli`](https://github.com/allank/murli) to provide a first-class developer experience for both human terminal users and LLM-based coding agents:
+
+- **Schema Introspection (`--schema`):** Every command is self-describing. Pass the `--schema` flag to any command to get a machine-readable JSON representation of the command's metadata, expected input parameters (flags, positional arguments), enums, return schemas, and usage examples (e.g. `psst lookup --schema`).
+- **TTY Auto-Detection:** You don't need to specify formatting flags when piping output. Psst automatically detects if standard output is a terminal. Humans at a terminal (TTY) get pretty-printed Lip Gloss panels or plain-text lines; agents pipe-capturing the output (non-TTY) automatically receive structured, machine-readable JSON envelopes.
+- **Structured Errors & Suggestions:** All database, syntax, or argument errors are formatted as structured `AgentError` JSON envelopes on `Stderr` in agent mode, complete with actionable `suggestion` hints and standard exit codes (`0` for success/hit, `1` for cache miss, `2` for environment/runtime tool failures).
 
 ---
 
