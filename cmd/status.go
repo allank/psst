@@ -10,6 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/allank/murli"
+	murlicobra "github.com/allank/murli/cobra"
 	"github.com/allank/psst/internal/output"
 	"github.com/allank/psst/internal/store"
 )
@@ -19,6 +21,29 @@ func init() {
 	statusCmd.Flags().Bool("pretty", false, "human-readable output")
 	statusCmd.Flags().String("store", "", "path to psst.db")
 	statusCmd.Flags().String("format", "plain", "output format: plain, json")
+
+	murlicobra.Annotate(statusCmd, murli.Metadata{
+		AgentDescription: "Retrieves stats and health information of the semantic cache database (e.g. database path, entries, expired keys, store size, tool counts, daemon address, and uptime).",
+		WhenToUse:        "Use when you want to inspect how many items are currently cached in the system, check cache storage size, or verify daemon process connectivity and health status.",
+		Idempotent:       true,
+		Returns: &murli.ReturnSchema{
+			Type:        "json",
+			Description: "Cache health and usage statistics",
+			Shape: map[string]any{
+				"store":         "string (absolute path to psst.db)",
+				"entries":       "int (total count of stored entries)",
+				"expired":       "int (count of expired entries pending eviction)",
+				"size_bytes":    "int (size of database file in bytes)",
+				"tool_counts":   "object (mapping of tool name to cached count)",
+				"daemon_addr":   "string (IP:Port of daemon if running)",
+				"daemon_uptime": "string (uptime duration description)",
+			},
+		},
+		Examples: []string{
+			"psst status",
+			"psst status --pretty",
+		},
+	})
 }
 
 var statusCmd = &cobra.Command{
@@ -29,7 +54,6 @@ var statusCmd = &cobra.Command{
 
 func runStatus(cmd *cobra.Command, _ []string) error {
 	pretty, _ := cmd.Flags().GetBool("pretty")
-	format, _ := cmd.Flags().GetString("format")
 	storeFlag, _ := cmd.Flags().GetString("store")
 
 	cfg := loadConfig()
@@ -37,8 +61,12 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 	s, err := openStore(storePath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "store_error",
+			Message:     fmt.Sprintf("failed to open database: %v", err),
+			Recoverable: false,
+		}
 	}
 	defer s.Close()
 
@@ -55,8 +83,12 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		info.ToolCounts[e.Tool]++
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "database_scan_error",
+			Message:     fmt.Sprintf("failed to scan store: %v", err),
+			Recoverable: false,
+		}
 	}
 
 	if fi, err := os.Stat(storePath); err == nil {
@@ -68,14 +100,16 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		info.DaemonUptime = uptime
 	}
 
+	writer := murlicobra.NewWriter(cmd)
 	w := os.Stdout
-	switch {
-	case format == "json":
+	if writer.IsTTY() {
+		if pretty {
+			output.WriteStatusPretty(w, info)
+		} else {
+			output.WriteStatus(w, info)
+		}
+	} else {
 		output.WriteStatusJSON(w, info)
-	case pretty:
-		output.WriteStatusPretty(w, info)
-	default:
-		output.WriteStatus(w, info)
 	}
 	return nil
 }

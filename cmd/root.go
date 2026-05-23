@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
+
+	murlicobra "github.com/allank/murli/cobra"
 )
 
 var Version = "dev"
@@ -15,7 +15,5 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	_ = murlicobra.Execute(rootCmd)
 }

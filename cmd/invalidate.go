@@ -6,16 +6,37 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/allank/murli"
+	murlicobra "github.com/allank/murli/cobra"
 	"github.com/allank/psst/internal/output"
 )
 
 func init() {
 	rootCmd.AddCommand(invalidateCmd)
-	invalidateCmd.Flags().String("tool", "", "tool name to invalidate")
-	invalidateCmd.Flags().String("key", "", "specific cache key to evict")
+	invalidateCmd.Flags().String("tool", "", "evict all entries for this tool")
+	invalidateCmd.Flags().String("key", "", "evict specific entry by key")
 	invalidateCmd.Flags().Bool("all", false, "flush entire cache")
 	invalidateCmd.Flags().Bool("pretty", false, "human-readable output")
 	invalidateCmd.Flags().String("store", "", "path to psst.db")
+
+	murlicobra.Annotate(invalidateCmd, murli.Metadata{
+		AgentDescription: "Evicts entries from the cache by tool name, specific entry key, or completely flushes the cache.",
+		WhenToUse:        "Use when cached data is known to be stale or updated upstream, and needs to be evicted to force a fresh tool call on the next execution.",
+		Idempotent:       true,
+		Returns: &murli.ReturnSchema{
+			Type:        "json",
+			Description: "Eviction summary status",
+			Shape: map[string]any{
+				"evicted": "bool (always true on success)",
+				"tool":    "string (the target identifier cleared)",
+				"count":   "int (total count of evicted cache records)",
+			},
+		},
+		Examples: []string{
+			"psst invalidate --tool jira_get_issue",
+			"psst invalidate --all",
+		},
+	})
 }
 
 var invalidateCmd = &cobra.Command{
@@ -36,8 +57,12 @@ func runInvalidate(cmd *cobra.Command, _ []string) error {
 
 	s, err := openStore(storePath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "store_error",
+			Message:     fmt.Sprintf("failed to open database: %v", err),
+			Recoverable: false,
+		}
 	}
 	defer s.Close()
 
@@ -47,25 +72,36 @@ func runInvalidate(cmd *cobra.Command, _ []string) error {
 	if all {
 		target = "*"
 	}
-	if target == "" && key == "" {
-		fmt.Fprintln(os.Stderr, "error: specify --tool, --key, or --all")
-		os.Exit(2)
+	if toolName == "" && key == "" && !all {
+		return &murli.AgentError{
+			Code:        murli.ExitUserError,
+			ErrorType:   "missing_args",
+			Message:     "at least one of --tool, --key, or --all is required",
+			Suggestion:  "Specify either a tool name to clear, an entry key, or --all to wipe everything.",
+			Recoverable: true,
+		}
 	}
 
-	n, err := c.Invalidate(target, key)
+	count, err := c.Invalidate(target, key)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "eviction_error",
+			Message:     fmt.Sprintf("eviction failed: %v", err),
+			Recoverable: false,
+		}
 	}
 
-	label := target
-	if key != "" {
-		label = key
-	}
-	if pretty {
-		output.WriteEvictedPretty(os.Stdout, label, n)
+	writer := murlicobra.NewWriter(cmd)
+	w := os.Stdout
+	if writer.IsTTY() {
+		if pretty {
+			output.WriteEvictedPretty(w, target, count)
+		} else {
+			output.WriteEvicted(w, target, count)
+		}
 	} else {
-		output.WriteEvicted(os.Stdout, label, n)
+		output.WriteEvictedJSON(w, target, count)
 	}
 	return nil
 }

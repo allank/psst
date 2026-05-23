@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
+	"github.com/allank/murli"
+	murlicobra "github.com/allank/murli/cobra"
 	"github.com/allank/psst/internal/mcpserver"
 	"github.com/allank/psst/internal/store"
 )
@@ -20,6 +22,19 @@ func init() {
 	serveCmd.Flags().String("listen", "127.0.0.1:7425", "MCP server bind address")
 	serveCmd.Flags().String("store", "", "path to psst.db")
 	serveCmd.Flags().Bool("pretty", false, "human-readable log output")
+
+	murlicobra.Annotate(serveCmd, murli.Metadata{
+		AgentDescription: "Starts the persistent semantic cache Model Context Protocol (MCP) server over HTTP.",
+		WhenToUse:        "Use when you want to start the daemon process to persistently handle and cache tool queries from AI clients.",
+		Idempotent:       false,
+		Returns: &murli.ReturnSchema{
+			Type:        "text",
+			Description: "Persistent execution log",
+		},
+		Examples: []string{
+			"psst serve --listen 127.0.0.1:7425",
+		},
+	})
 }
 
 var serveCmd = &cobra.Command{
@@ -42,8 +57,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 	s, err := openStore(storePath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "store_error",
+			Message:     fmt.Sprintf("failed to open database: %v", err),
+			Recoverable: false,
+		}
 	}
 
 	emb, _ := loadEmbedder()
@@ -76,8 +95,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 	srv := mcpserver.New(listenAddr, c, entryFunc, storePath)
 	if err := srv.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "error bind_failed addr=%s err=%s\n", listenAddr, err)
-		os.Exit(1)
+		return &murli.AgentError{
+			Code:        murli.ExitToolError,
+			ErrorType:   "bind_failed",
+			Message:     fmt.Sprintf("failed to bind server to address %s: %v", listenAddr, err),
+			Recoverable: false,
+		}
 	}
 
 	log.Info("serving", "store", storePath, "listen", srv.Addr(), "entries", entryFunc())

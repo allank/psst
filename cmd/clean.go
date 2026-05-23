@@ -1,17 +1,36 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/allank/psst/internal/output"
+	"github.com/allank/murli"
+	murlicobra "github.com/allank/murli/cobra"
 )
 
 func init() {
 	rootCmd.AddCommand(cleanCmd)
 	cleanCmd.Flags().String("store", "", "path to psst.db")
+
+	murlicobra.Annotate(cleanCmd, murli.Metadata{
+		AgentDescription: "Deletes the `psst.db` database and its corresponding sidecar index files.",
+		WhenToUse:        "Use when you want to wipe clean the cache database, evicting all stored tool results and resetting the semantic index.",
+		Idempotent:       true,
+		Returns: &murli.ReturnSchema{
+			Type:        "json",
+			Description: "List of removed files",
+			Shape: map[string]any{
+				"removed": "bool (always true on success)",
+				"paths":   "[]string (paths of deleted files)",
+			},
+		},
+		Examples: []string{
+			"psst clean",
+		},
+	})
 }
 
 var cleanCmd = &cobra.Command{
@@ -21,6 +40,7 @@ var cleanCmd = &cobra.Command{
 }
 
 func runClean(cmd *cobra.Command, _ []string) error {
+	writer := murlicobra.NewWriter(cmd)
 	storeFlag, _ := cmd.Flags().GetString("store")
 	cfg := loadConfig()
 	storePath := resolveStorePath(storeFlag, cfg)
@@ -32,6 +52,21 @@ func runClean(cmd *cobra.Command, _ []string) error {
 			removed = append(removed, path)
 		}
 	}
-	output.WriteRemoved(os.Stdout, removed)
+
+	payload := map[string]any{
+		"removed": true,
+		"paths":   removed,
+	}
+	humanText := ""
+	if len(removed) > 0 {
+		var list []string
+		for _, p := range removed {
+			list = append(list, filepath.Base(p))
+		}
+		humanText = fmt.Sprintf("removed %s", filepath.Join(list...))
+	} else {
+		humanText = "no files to remove"
+	}
+	writer.WriteSuccess(humanText, payload)
 	return nil
 }
